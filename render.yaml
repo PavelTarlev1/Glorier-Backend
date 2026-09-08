@@ -1,0 +1,27 @@
+# Render.com blueprint — no payment method required for the free plan.
+# Setup (one-time, in the Render dashboard):
+#   1. New + -> Blueprint -> connect the PavelTarlev1/Glorier-Backend repo
+#      (Render finds this file automatically)
+#   2. It will ask for the two secret env vars below (sync: false means
+#      "don't store the value in this file, ask for it interactively"):
+#        TURSO_DATABASE_URL  — from `turso db show navlo-db`
+#        TURSO_AUTH_TOKEN    — from `turso db tokens create navlo-db`
+#   3. Deploy. Render assigns a URL like https://navlo-backend.onrender.com
+#      — use that as VITE_API_BASE when setting up the frontend blueprint.
+#
+# Free-tier tradeoff: spins down after ~15 min idle, ~1 min cold-start on the
+# next request. The database itself (Turso) is unaffected either way.
+services:
+  - type: web
+    name: navlo-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: DISABLE_DB_WRITES
+        value: 'true'

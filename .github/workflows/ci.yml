@@ -1,0 +1,25 @@
+# Typecheck gate only — deployment is handled by Render's own GitHub
+# integration (auto-deploys on push once the service is connected via the
+# Render dashboard, see render.yaml), no token/CLI step needed here.
+name: CI
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck
