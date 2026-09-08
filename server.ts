@@ -21,6 +21,16 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
 
+// Temporary switch to make the calculations store read-only — set
+// DISABLE_DB_WRITES=true to block POST/DELETE on /api/calculations while
+// still serving GET (so saved history remains visible). Flip the env var
+// back (or remove it) to re-enable writes; no code change needed either way.
+const WRITES_DISABLED = process.env.DISABLE_DB_WRITES === 'true';
+function blockIfWritesDisabled(_req: Request, res: Response, next: () => void) {
+  if (WRITES_DISABLED) return res.status(403).json({ error: 'Saving is temporarily disabled' });
+  next();
+}
+
 /* ---------------------------------------------------------------------- */
 /* Reference rate data (read-only, derived from the anonymized TMS export) */
 /* ---------------------------------------------------------------------- */
@@ -79,7 +89,7 @@ app.get('/api/calculations', async (req: Request, res: Response) => {
 
 const REQUIRED_CALC_FIELDS = ['lc', 'uc', 'cat', 'distance', 'pricePerKm', 'priceAvg', 'priceLo', 'priceHi', 'total', 'confidence', 'sampleSize'] as const;
 
-app.post('/api/calculations', async (req: Request, res: Response) => {
+app.post('/api/calculations', blockIfWritesDisabled, async (req: Request, res: Response) => {
   const c = req.body || {};
   for (const key of REQUIRED_CALC_FIELDS) {
     if (c[key] === undefined || c[key] === null) {
@@ -107,7 +117,7 @@ app.post('/api/calculations', async (req: Request, res: Response) => {
   res.status(201).json(row);
 });
 
-app.delete('/api/calculations/:id', async (req: Request, res: Response) => {
+app.delete('/api/calculations/:id', blockIfWritesDisabled, async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const info = await db.execute({ sql: 'DELETE FROM calculations WHERE id = ?', args: [id] });
   if (info.rowsAffected === 0) return res.status(404).json({ error: 'calculation not found' });
