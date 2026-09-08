@@ -1,6 +1,10 @@
 // SQLite layer for Navlo — uses Node's built-in node:sqlite (Node 22+, experimental).
 // No native module compilation needed: the DB file lives at backend/data/navlo.db
-// and is created + seeded automatically on first run.
+// locally, and is created + seeded automatically on first run. In production the
+// path is overridable via DB_PATH — e.g. a Fly.io persistent volume mounted at
+// /data — so the writable database lives outside the (read-only, baked-into-the-
+// image) app directory and survives redeploys. rates.json always ships with the
+// image itself; it's reference data, never written to, so it doesn't need a volume.
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +12,7 @@ import path from 'node:path';
 import type { RatesData } from './types.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, 'data', 'navlo.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'navlo.db');
 const RATES_PATH = path.join(__dirname, 'data', 'rates.json');
 
 const db = new DatabaseSync(DB_PATH);
