@@ -1,0 +1,37 @@
+# See https://fly.io/docs/app-guides/continuous-deployment-with-github-actions/
+
+name: CI/CD
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run typecheck
+
+  deploy:
+    name: Deploy to Fly.io
+    needs: typecheck
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency: deploy-group    # ensure only one deploy runs at a time
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

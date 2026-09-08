@@ -1,34 +1,29 @@
-# Fly.io app config for the Navlo backend.
-# First-time setup (run from the backend/ directory, with the Fly CLI installed
-# and `fly auth login` already done):
-#   fly launch --no-deploy         # creates the app, keeps this file as-is when asked
-#   fly volumes create navlo_data --region <same region as the app> --size 1
-#   fly deploy
+# fly.toml app configuration file generated for navlo-backend on 2026-09-08T19:55:38+03:00
 #
-# `navlo_data` is a real persistent volume — the SQLite file at /data/navlo.db
-# survives restarts and redeploys, unlike the container's own ephemeral disk.
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "navlo-backend"          # change if this name is taken — Fly app names are global
-primary_region = "fra"          # Frankfurt — pick whatever region is closest to your users
+app = 'navlo-backend'
+primary_region = 'fra'
 
 [build]
-
 [env]
-  PORT = "4000"
-  DB_PATH = "/data/navlo.db"
+  DB_PATH = '/data/navlo.db'
+  PORT = '4000'
 
 [[mounts]]
-  source = "navlo_data"
-  destination = "/data"
+  source = 'navlo_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 4000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
