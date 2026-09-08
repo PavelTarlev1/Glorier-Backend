@@ -1,7 +1,7 @@
 {
   "name": "navlo-backend",
   "version": "1.0.0",
-  "description": "Navlo API \u2014 freight rate calculator + fleet status backend",
+  "description": "Navlo API — freight rate calculator + fleet status backend",
   "type": "module",
   "main": "server.ts",
   "scripts": {
@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^4.21.2"
   },
   "devDependencies": {

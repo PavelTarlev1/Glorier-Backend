@@ -8,12 +8,11 @@ primary_region = 'fra'
 
 [build]
 [env]
-  DB_PATH = '/data/navlo.db'
   PORT = '4000'
 
-[[mounts]]
-  source = 'navlo_data'
-  destination = '/data'
+# No volume mount needed — the database is Turso (hosted libSQL), reached over
+# the network via TURSO_DATABASE_URL/TURSO_AUTH_TOKEN (set as `fly secrets`,
+# not here — never commit real credentials to fly.toml).
 
 [http_service]
   internal_port = 4000

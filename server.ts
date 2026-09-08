@@ -3,8 +3,16 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import db, { getRates } from './db.ts';
+import db, { getRates, ready } from './db.ts';
+import type { Row } from '@libsql/client';
 import type { CalculationRow } from './types.ts';
+
+/** Turns a libSQL Row (array-like, but also indexable by column name) into a
+ *  plain object — so it serializes to JSON exactly like the old
+ *  better-sqlite3-style rows the frontend already expects. */
+function rowToObject<T>(columns: string[], row: Row): T {
+  return Object.fromEntries(columns.map((c) => [c, row[c]])) as T;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -50,28 +58,28 @@ app.get('/api/geocode', async (req: Request, res: Response) => {
 /* Calculations — saved price estimates, shared across whoever uses the   */
 /* tool (persisted server-side, not per-browser localStorage)             */
 /* ---------------------------------------------------------------------- */
-app.get('/api/calculations', (req: Request, res: Response) => {
+app.get('/api/calculations', async (req: Request, res: Response) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  let rs;
   if (!q) {
-    const rows = db.prepare('SELECT * FROM calculations ORDER BY created_at DESC LIMIT 50').all();
-    return res.json(rows);
+    rs = await db.execute('SELECT * FROM calculations ORDER BY created_at DESC LIMIT 50');
+  } else {
+    // Search across route codes, cities and companies — covers "who is this
+    // shipment for" lookups, not just route/date browsing.
+    const like = `%${q}%`;
+    rs = await db.execute({
+      sql: `SELECT * FROM calculations
+            WHERE lc LIKE ? OR uc LIKE ? OR city_from LIKE ? OR city_to LIKE ? OR company_from LIKE ? OR company_to LIKE ?
+            ORDER BY created_at DESC LIMIT 50`,
+      args: [like, like, like, like, like, like],
+    });
   }
-  // Search across route codes, cities and companies — covers "who is this
-  // shipment for" lookups, not just route/date browsing.
-  const like = `%${q}%`;
-  const rows = db
-    .prepare(
-      `SELECT * FROM calculations
-       WHERE lc LIKE ? OR uc LIKE ? OR city_from LIKE ? OR city_to LIKE ? OR company_from LIKE ? OR company_to LIKE ?
-       ORDER BY created_at DESC LIMIT 50`
-    )
-    .all(like, like, like, like, like, like);
-  res.json(rows);
+  res.json(rs.rows.map((r) => rowToObject(rs.columns, r)));
 });
 
 const REQUIRED_CALC_FIELDS = ['lc', 'uc', 'cat', 'distance', 'pricePerKm', 'priceAvg', 'priceLo', 'priceHi', 'total', 'confidence', 'sampleSize'] as const;
 
-app.post('/api/calculations', (req: Request, res: Response) => {
+app.post('/api/calculations', async (req: Request, res: Response) => {
   const c = req.body || {};
   for (const key of REQUIRED_CALC_FIELDS) {
     if (c[key] === undefined || c[key] === null) {
@@ -80,29 +88,29 @@ app.post('/api/calculations', (req: Request, res: Response) => {
   }
   const now = new Date().toISOString();
   const transitType = c.transitType === 'own' ? 'own' : 'sold';
-  const info = db
-    .prepare(
-      `INSERT INTO calculations
-       (lc, uc, cat, city_from, city_to, post_from, post_to, company_from, company_to, transit_type, ship_date, ship_time, arrival_date, arrival_time,
-        distance, deviation_km, manual_distance_km, manual_price_avg, price_per_km, price_avg, price_lo, price_hi, empty_km, extra_cost, toll_cost, bridge_cost, ferry_cost, customs_cost, weight_kg, tail_lift, service_tags, total, confidence, sample_size, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
+  const info = await db.execute({
+    sql: `INSERT INTO calculations
+          (lc, uc, cat, city_from, city_to, post_from, post_to, company_from, company_to, transit_type, ship_date, ship_time, arrival_date, arrival_time,
+           distance, deviation_km, manual_distance_km, manual_price_avg, price_per_km, price_avg, price_lo, price_hi, empty_km, extra_cost, toll_cost, bridge_cost, ferry_cost, customs_cost, weight_kg, tail_lift, service_tags, total, confidence, sample_size, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
       c.lc, c.uc, c.cat, c.cityFrom || '', c.cityTo || '', c.postFrom || '', c.postTo || '', c.companyFrom || '', c.companyTo || '',
       transitType, c.shipDate || '', c.shipTime || '', c.arrivalDate || '', c.arrivalTime || '',
       c.distance, c.deviationKm || 0, c.manualDistanceKm || null, c.manualPriceAvg || null, c.pricePerKm, c.priceAvg, c.priceLo, c.priceHi,
       c.emptyKm || 0, c.extraCost || 0, c.tollCost || 0, c.bridgeCost || 0, c.ferryCost || 0, c.customsCost || 0, c.weightKg || 0,
       c.tailLift ? 1 : 0, Array.isArray(c.serviceTags) ? c.serviceTags.join(',') : '',
-      c.total, c.confidence, c.sampleSize, now
-    );
-  const row = db.prepare('SELECT * FROM calculations WHERE id = ?').get(info.lastInsertRowid) as unknown as CalculationRow;
+      c.total, c.confidence, c.sampleSize, now,
+    ],
+  });
+  const sel = await db.execute({ sql: 'SELECT * FROM calculations WHERE id = ?', args: [Number(info.lastInsertRowid)] });
+  const row = rowToObject<CalculationRow>(sel.columns, sel.rows[0]);
   res.status(201).json(row);
 });
 
-app.delete('/api/calculations/:id', (req: Request, res: Response) => {
+app.delete('/api/calculations/:id', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const info = db.prepare('DELETE FROM calculations WHERE id = ?').run(id);
-  if (info.changes === 0) return res.status(404).json({ error: 'calculation not found' });
+  const info = await db.execute({ sql: 'DELETE FROM calculations WHERE id = ?', args: [id] });
+  if (info.rowsAffected === 0) return res.status(404).json({ error: 'calculation not found' });
   res.status(204).end();
 });
 
@@ -121,6 +129,8 @@ if (existsSync(FRONTEND_DIST)) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Navlo API listening on http://localhost:${PORT}`);
+ready.then(() => {
+  app.listen(PORT, () => {
+    console.log(`Navlo API listening on http://localhost:${PORT}`);
+  });
 });
