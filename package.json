@@ -1,7 +1,7 @@
 {
   "name": "navlo-backend",
   "version": "1.0.0",
-  "description": "Navlo API — freight rate calculator + fleet status backend",
+  "description": "Navlo API — freight rate calculator backend",
   "type": "module",
   "main": "server.ts",
   "scripts": {
